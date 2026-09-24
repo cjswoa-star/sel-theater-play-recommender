@@ -1,0 +1,37 @@
+name: Apply batch7 residual anomaly curation
+
+on:
+  push:
+    paths:
+      - 'tools/apply_batch7.py'
+      - '.github/workflows/apply-batch7.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  curate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply batch7 curation
+        run: python tools/apply_batch7.py
+      - name: Verify JavaScript syntax
+        run: node --check curation-overrides.js
+      - name: Verify key fixes
+        run: |
+          grep -q 'BATCH7_RESIDUAL_ANOMALY_FIXES' curation-overrides.js
+          grep -q '상상 물건 릴레이' curation-overrides.js
+          grep -q '기억하기, 의사소통' curation-overrides.js
+          grep -q '같은 몸으로 움직였는데 직선과 곡선' curation-overrides.js
+          grep -q 'participant_structure' curation-overrides.js
+      - name: Remove one-time files
+        run: rm -f tools/apply_batch7.py .github/workflows/apply-batch7.yml
+      - name: Commit changes
+        run: |
+          git config user.name "cjswoa-star"
+          git config user.email "cjswoa@goedu.kr"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Fix residual category and copy anomalies"
+          git push
