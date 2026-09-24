@@ -1,0 +1,35 @@
+name: Apply batch5 recommendation curation
+
+on:
+  push:
+    paths:
+      - 'tools/apply_batch5.py'
+      - '.github/workflows/apply-batch5.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  curate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply recommendation curation
+        run: python tools/apply_batch5.py
+      - name: Verify JavaScript syntax
+        run: node --check curation-overrides.js
+      - name: Verify target ids
+        run: |
+          grep -q '"055":' curation-overrides.js
+          grep -q '"097":' curation-overrides.js
+          grep -q '"137":' curation-overrides.js
+      - name: Remove one-time files
+        run: rm tools/apply_batch5.py .github/workflows/apply-batch5.yml
+      - name: Commit changes
+        run: |
+          git config user.name "cjswoa-star"
+          git config user.email "cjswoa@goedu.kr"
+          git add curation-overrides.js tools/apply_batch5.py .github/workflows/apply-batch5.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "Curate remaining high-confidence purpose tags"
+          git push
