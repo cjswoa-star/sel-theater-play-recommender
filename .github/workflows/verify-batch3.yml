@@ -1,0 +1,18 @@
+name: Verify batch3
+on: push
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: node --check curation-overrides.js
+      - run: grep -q "'007':" curation-overrides.js && grep -q "'140':" curation-overrides.js && grep -q "관객이 비밀 단어를 떠올리게 한" curation-overrides.js
+      - run: rm .github/workflows/verify-batch3.yml
+      - run: |
+          git config user.name "cjswoa-star"
+          git config user.email "cjswoa@goedu.kr"
+          git add .github/workflows/verify-batch3.yml
+          git commit -m "Remove one-time batch3 syntax verification"
+          git push
