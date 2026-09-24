@@ -680,7 +680,7 @@ button{font:inherit}
 </section>
 </div>
 
-<script>(function(g){const c={"metadata":{"rule_version":"1.2","source_activity_count":267,"principle":"HARD FILTER → SOFT SCORE → candidate pool → diversity adjustment → final 3","source_preserved_overwrite":false,"sel_preference_rule":"SEL competency selection is optional and affects soft score only.","ui_revision":"approved-v6-real-program-cleanup"},"weights":{"purpose":25,"mood":11,"energy":10,"time":7,"participants":5,"space":8,"materials":4,"activity_fit":4,"sel":10,"safety":10,"convenience":6},"diversity":{"candidate_pool_size":18,"max_score_gap_from_best":10,"same_diversity_group_penalty":4,"same_primary_purpose_penalty":2,"same_movement_penalty":1,"near_tie_random_delta":1.0},"ui_values":{"spaces":{"CLASSROOM":"일반 교실","CLEARED_CLASSROOM":"책상 일부를 치운 교실","MULTIPURPOSE_ROOM":"다목적실","OUTDOOR":"야외"},"moods":{"TOO_QUIET":"너무 조용해요","LOW":"처져 있어요","TENSE":"긴장돼 있어요","BALANCED":"적당해요","SLIGHTLY_EXCITED":"조금 들떠 있어요","VERY_DISTRACTED":"많이 산만해요"},"energies":{"LOW":"낮아요","MEDIUM":"적당해요","HIGH":"높아요"},"contacts":{"OK":"가능","MINIMIZE":"최소화","NONE":"없음"},"materials":{"NO_MATERIALS":"준비물 없이","AVAILABLE":"준비물 사용 가능"},"sel_competencies":["자기 인식","자기 조절","사회적 인식","관계 기술","문제 해결·선택"]}};g.THEATER_GAME_CONFIG=c;if(typeof module!=='undefined'&&module.exports)module.exports=c;})(typeof window!=='undefined'?window:globalThis);
+<script>(function(g){const c={"metadata":{"rule_version":"1.3","source_activity_count":267,"principle":"HARD FILTER → SOFT SCORE → candidate pool → diversity adjustment → final 3","source_preserved_overwrite":false,"sel_preference_rule":"SEL competency selection is optional and affects soft score only.","ui_revision":"approved-v6-real-program-cleanup"},"weights":{"purpose":25,"mood":11,"energy":10,"time":7,"participants":5,"space":8,"materials":4,"activity_fit":4,"sel":10,"safety":10,"convenience":6},"diversity":{"candidate_pool_size":18,"max_score_gap_from_best":10,"same_diversity_group_penalty":4,"same_primary_purpose_penalty":2,"same_movement_penalty":1,"near_tie_random_delta":1.0},"ui_values":{"spaces":{"CLASSROOM":"일반 교실","CLEARED_CLASSROOM":"책상 일부를 치운 교실","MULTIPURPOSE_ROOM":"다목적실","OUTDOOR":"야외"},"moods":{"TOO_QUIET":"너무 조용해요","LOW":"처져 있어요","TENSE":"긴장돼 있어요","BALANCED":"적당해요","SLIGHTLY_EXCITED":"조금 들떠 있어요","VERY_DISTRACTED":"많이 산만해요"},"energies":{"LOW":"낮아요","MEDIUM":"적당해요","HIGH":"높아요"},"contacts":{"OK":"가능","MINIMIZE":"최소화","NONE":"없음"},"materials":{"NO_MATERIALS":"준비물 없이","AVAILABLE":"준비물 사용 가능"},"sel_competencies":["자기 인식","자기 조절","사회적 인식","관계 기술","문제 해결·선택"]}};g.THEATER_GAME_CONFIG=c;if(typeof module!=='undefined'&&module.exports)module.exports=c;})(typeof window!=='undefined'?window:globalThis);
 </script><script>(function(global){
   "use strict";
 
@@ -701,13 +701,59 @@ button{font:inherit}
     return true;
   }
 
+
+  function currentSpaceScore(act,c){
+    const types=(act.recommendation_normalized.space_types||[]);
+    const map={CLASSROOM:0,CLEARED_CLASSROOM:0,MULTIPURPOSE_ROOM:0,OUTDOOR:0};
+    const bump=(k,v)=>{map[k]=Math.max(map[k],v)};
+    for(const t of types){
+      if(t==="CLASSROOM"){bump("CLASSROOM",1);bump("CLEARED_CLASSROOM",1);bump("MULTIPURPOSE_ROOM",.9);}
+      else if(t==="OPEN_ACTIVITY_SPACE"){bump("CLEARED_CLASSROOM",1);bump("MULTIPURPOSE_ROOM",1);bump("OUTDOOR",.9);}
+      else if(t==="CLEARED_CLASSROOM"){bump("CLEARED_CLASSROOM",1);bump("MULTIPURPOSE_ROOM",1);}
+      else if(t==="MULTIPURPOSE_ROOM"){bump("MULTIPURPOSE_ROOM",1);}
+      else if(t==="OUTDOOR"){bump("OUTDOOR",1);}
+      else if(t==="LARGE_OPEN_SPACE"){bump("CLEARED_CLASSROOM",.55);bump("MULTIPURPOSE_ROOM",1);bump("OUTDOOR",.9);}
+      else if(t==="FLOOR_ACTIVITY_SPACE"){bump("CLEARED_CLASSROOM",.9);bump("MULTIPURPOSE_ROOM",1);}
+      else if(t==="FLEXIBLE_FURNITURE_SPACE"){bump("CLEARED_CLASSROOM",1);bump("MULTIPURPOSE_ROOM",1);}
+    }
+    return map[c.space]||0;
+  }
+
+  function currentEnergyFit(act,c){
+    const level=act.recommendation_normalized.activity_level;
+    const table={HIGH:{LOW:1,MEDIUM:.75,HIGH:.2},MEDIUM:{LOW:.8,MEDIUM:1,HIGH:.8},LOW:{LOW:.25,MEDIUM:.75,HIGH:1}};
+    return (table[level]||{})[c.energy]??.5;
+  }
+
+  function currentSafetyBase(act){
+    const p=act.recommendation_normalized;
+    let s=({LOW:1,MEDIUM:.82,HIGH:.47})[p.collision_risk]??.8;
+    if(p.contact_level==="LOW") s-=.15;
+    if(p.movement_level==="HIGH") s-=.08;
+    return clamp(s);
+  }
+
+  function currentConvenience(act){
+    const p=act.recommendation_normalized;
+    const complexity=act.program_derived.material_complexity;
+    let s=!p.materials_required?1:(({LOW:.92,MEDIUM:.84,HIGH:.72,OPTIONAL:.98,NONE:1})[complexity]||.8);
+    if(p.noise_level==="HIGH") s-=.12;
+    if(p.movement_level==="HIGH") s-=.12;
+    return clamp(s);
+  }
+
+  function currentDiversityGroup(act){
+    const p=act.recommendation_normalized;
+    return [p.participant_structure||"OTHER",p.movement_level||"MEDIUM",(p.purpose_tags||[])[0]||"기타"].join("|");
+  }
+
   function hardFilter(act,c){
     const p=act.recommendation_normalized,d=act.program_derived;
     if(!p.recommendation_ready) return {pass:false,reason:"not_ready"};
     if(c.grade<p.grade_min || c.grade>p.grade_max) return {pass:false,reason:"grade"};
     if(c.minutes<p.time_min) return {pass:false,reason:"time"};
     if(!participantFeasible(c.participants,act)) return {pass:false,reason:"participants"};
-    if(((d.space_compatibility||{})[c.space]||0)<0.5) return {pass:false,reason:"space"};
+    if(currentSpaceScore(act,c)<0.5) return {pass:false,reason:"space"};
     if(c.materials==="NO_MATERIALS" && p.materials_required) return {pass:false,reason:"materials"};
     if(c.contact==="NONE" && p.contact_level==="LOW") return {pass:false,reason:"contact"};
     return {pass:true};
@@ -764,7 +810,7 @@ button{font:inherit}
   }
 
   function safetyScore(act,c){
-    let s=(act.program_derived.recommendation_features||{}).safety_score??.8;
+    let s=currentSafetyBase(act);
     const p=act.recommendation_normalized;
     if(c.contact==="MINIMIZE"&&p.contact_level==="LOW") s*=.72;
     if(c.mood==="VERY_DISTRACTED"&&p.collision_risk==="MEDIUM") s*=.8;
@@ -777,15 +823,15 @@ button{font:inherit}
     const components={
       purpose:purposeScore(act,c),
       mood:(d.mood_fit||{})[c.mood]??.5,
-      energy:(d.energy_fit||{})[c.energy]??.5,
+      energy:currentEnergyFit(act,c),
       time:timeScore(act,c),
       participants:participantScore(act,c),
-      space:(d.space_compatibility||{})[c.space]||0,
+      space:currentSpaceScore(act,c),
       materials:materialScore(act,c),
       activity_fit:activityFit(act,c),
       sel:selScore(act,c),
       safety:safetyScore(act,c),
-      convenience:(d.recommendation_features||{}).classroom_convenience??.75
+      convenience:currentConvenience(act)
     };
     let total=0;
     Object.keys(w).forEach(k=>total+=(components[k]||0)*w[k]);
@@ -799,6 +845,7 @@ button{font:inherit}
     const matchedSel=(c.selCompetencies||[]).filter(x=>p.sel_tags.includes(x));
     clauses.push(`${c.grade}학년, ${c.participants}명, ${config.ui_values.spaces[c.space]}, ${c.minutes}분 조건에서 진행 가능한 활동이에요.`);
     if(matchedPurpose.length) clauses.push(`${matchedPurpose.slice(0,2).join("·")} 목적과 직접 연결돼요.`);
+    else if((c.purposes||[]).length) clauses.push("선택한 목적의 정확 일치 활동이 부족해, 수업 조건이 가까운 활동을 함께 제안했어요.");
     if(matchedSel.length) clauses.push(`자료집에서 ${matchedSel.slice(0,2).join("·")} 역량과 연결된 활동이에요.`);
     if(!p.materials_required) clauses.push("준비물이 필요하지 않아요.");
     if(c.contact==="NONE"&&p.contact_level==="OPTIONAL") clauses.push("접촉은 선택적이라 비접촉 방식으로 운영할 수 있어요.");
@@ -824,7 +871,7 @@ button{font:inherit}
       const ranked=remaining.map(x=>{
         let penalty=0;
         for(const y of chosen){
-          if(x.activity.program_derived.diversity_group===y.activity.program_derived.diversity_group)
+          if(currentDiversityGroup(x.activity)===currentDiversityGroup(y.activity))
             penalty+=config.diversity.same_diversity_group_penalty;
           const xp=(x.activity.recommendation_normalized.purpose_tags||[])[0];
           const yp=(y.activity.recommendation_normalized.purpose_tags||[])[0];
@@ -864,11 +911,20 @@ button{font:inherit}
     if(candidates.length<3&&excluded.size){
       return recommend(activities,criteria,{...options,excludeIds:[],allowReuse:true});
     }
-    candidates.sort((a,b)=>b.score-a.score);
-    const selected=selectDiverse(candidates,3,config,options.rng);
+    let selectionCandidates=candidates;
+    let purposeMatchedCount=0;
+    if((criteria.purposes||[]).length){
+      const purposeMatched=candidates.filter(x=>(criteria.purposes||[]).some(t=>(x.activity.recommendation_normalized.purpose_tags||[]).includes(t)));
+      purposeMatchedCount=purposeMatched.length;
+      if(purposeMatched.length>=3) selectionCandidates=purposeMatched;
+    }
+    selectionCandidates.sort((a,b)=>b.score-a.score);
+    const selected=selectDiverse(selectionCandidates,3,config,options.rng);
     return {
       selected:selected.map(x=>({...x,reason:buildReason(x.activity,criteria,config)})),
       candidateCount:candidates.length,
+      purposeMatchedCount,
+      purposeFallback:(criteria.purposes||[]).length>0 && purposeMatchedCount<3,
       rejectCounts,
       reused:!!options.allowReuse
     };
