@@ -1,0 +1,119 @@
+name: Build deep activity audit
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build-deep-audit.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Analyze coverage, similarities, and flags
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json, re, collections, itertools, difflib
+
+          cat=json.loads(Path('audit/activity_catalog.json').read_text(encoding='utf-8'))
+          structural=json.loads(Path('audit/structural_audit.json').read_text(encoding='utf-8'))
+
+          # Flag frequencies
+          flag_counts=collections.Counter(f for x in structural['flags'] for f in x['flags'])
+
+          # Grade coverage and practical classroom coverage
+          grade_support={}
+          for g in range(1,7):
+              supported=[x for x in cat if x['grade_min'] is not None and x['grade_max'] is not None and x['grade_min']<=g<=x['grade_max']]
+              grade_support[str(g)]={
+                  'all':len(supported),
+                  'general_classroom':sum(1 for x in supported if (x.get('space_compatibility') or {}).get('CLASSROOM',0)>=0.5),
+                  'cleared_classroom':sum(1 for x in supported if (x.get('space_compatibility') or {}).get('CLEARED_CLASSROOM',0)>=0.5),
+                  'no_materials':sum(1 for x in supported if not x.get('materials_required')),
+                  'no_contact':sum(1 for x in supported if x.get('contact_level')!='LOW'),
+                  'low_movement':sum(1 for x in supported if x.get('movement_level')=='LOW'),
+              }
+
+          def participant_ok(x,n):
+              mn=x.get('participant_min'); mx=x.get('participant_max'); s=x.get('participant_structure')
+              if mn is not None and n<mn:return False
+              if mx is not None and n>mx:return False
+              if s=='EVEN_GROUP' and n%2:return False
+              if s in ('TWO_TEAMS','TWO_LINES') and n<4:return False
+              if s=='SOLO_WITH_AUDIENCE' and n<2:return False
+              if s=='ROLE_ROTATION' and n<3:return False
+              if s=='PAIRS' and n<2:return False
+              return True
+
+          def hard_ok(x,g,minutes,n,space,materials,contact):
+              if not x.get('recommendation_ready'):return False
+              if not (x['grade_min']<=g<=x['grade_max']):return False
+              if minutes<x['time_min']:return False
+              if not participant_ok(x,n):return False
+              if (x.get('space_compatibility') or {}).get(space,0)<0.5:return False
+              if materials=='NO_MATERIALS' and x.get('materials_required'):return False
+              if contact=='NONE' and x.get('contact_level')=='LOW':return False
+              return True
+
+          scenario=[]
+          for g,minutes,space,contact in itertools.product(range(1,7),[5,10,15,20,30],['CLASSROOM','CLEARED_CLASSROOM','MULTIPURPOSE_ROOM'],['NONE','MINIMIZE']):
+              eligible=[x['id'] for x in cat if hard_ok(x,g,minutes,24,space,'NO_MATERIALS',contact)]
+              scenario.append({'grade':g,'minutes':minutes,'participants':24,'space':space,'materials':'NO_MATERIALS','contact':contact,'count':len(eligible),'ids':eligible[:20]})
+          low_scenarios=[x for x in scenario if x['count']<5]
+
+          # Near duplicates by title and activity content
+          def clean(s):
+              return re.sub(r'\s+',' ',re.sub(r'[^0-9a-z가-힣 ]+',' ',(s or '').lower())).strip()
+          def proc_text(x):
+              return ' '.join(p.get('text','') for p in x.get('procedure',[]))
+          near=[]
+          for i,a in enumerate(cat):
+              at=clean(a['title']); ac=clean((a['summary'] or '')+' '+proc_text(a))
+              for b in cat[i+1:]:
+                  bt=clean(b['title']); bc=clean((b['summary'] or '')+' '+proc_text(b))
+                  ts=difflib.SequenceMatcher(None,at,bt).ratio() if at and bt else 0
+                  cs=difflib.SequenceMatcher(None,ac,bc).ratio() if ac and bc else 0
+                  if ts>=0.78 or cs>=0.84:
+                      near.append({'a':a['id'],'a_title':a['title'],'b':b['id'],'b_title':b['title'],'title_similarity':round(ts,3),'content_similarity':round(cs,3)})
+          near.sort(key=lambda z:max(z['title_similarity'],z['content_similarity']),reverse=True)
+
+          # Possible PE/game-heavy titles: manual review queue, not automatic rejection
+          sports_terms=['술래','피구','줄넘기','릴레이','달리기','공놀이','놀이터','경주','잡기','태그']
+          physical_review=[]
+          for x in cat:
+              hits=[t for t in sports_terms if t in (x['title'] or '')]
+              if hits: physical_review.append({'id':x['id'],'title':x['title'],'hits':hits,'summary':x['summary'],'purpose_tags':x['purpose_tags']})
+
+          # Tag cardinality distribution
+          purpose_card=collections.Counter(len(x['purpose_tags']) for x in cat)
+          sel_card=collections.Counter(len(x['sel_tags']) for x in cat)
+
+          out={
+              'flag_type_counts':dict(flag_counts.most_common()),
+              'grade_support':grade_support,
+              'low_coverage_scenarios_under_5_count':len(low_scenarios),
+              'low_coverage_scenarios':low_scenarios,
+              'scenario_count_tested':len(scenario),
+              'near_duplicate_pair_count':len(near),
+              'near_duplicate_pairs':near[:120],
+              'physical_or_general_game_review_count':len(physical_review),
+              'physical_or_general_game_review':physical_review,
+              'purpose_tag_cardinality':dict(sorted(purpose_card.items())),
+              'sel_tag_cardinality':dict(sorted(sel_card.items())),
+          }
+          Path('audit/deep_audit.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps({k:out[k] for k in ['flag_type_counts','grade_support','low_coverage_scenarios_under_5_count','near_duplicate_pair_count','physical_or_general_game_review_count','purpose_tag_cardinality','sel_tag_cardinality']},ensure_ascii=False,indent=2))
+          PY
+      - name: Commit deep audit
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add audit/deep_audit.json
+          git commit -m 'Generate temporary deep activity audit data'
+          git push
