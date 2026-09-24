@@ -1,0 +1,38 @@
+name: Apply corrected batch6 curation
+
+on:
+  push:
+    paths:
+      - 'tools/fix_batch6.py'
+      - '.github/workflows/apply-batch6-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  curate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply batch6 curation
+        run: python tools/apply_batch6.py
+      - name: Fix source boundary
+        run: python tools/fix_batch6.py
+      - name: Verify JavaScript syntax
+        run: node --check curation-overrides.js
+      - name: Verify key fixes
+        run: |
+          grep -q '"226"' curation-overrides.js
+          grep -q '기억하기' curation-overrides.js
+          grep -q 'movement_level":"MEDIUM"' curation-overrides.js
+          grep -q '관계 탐색' curation-overrides.js
+      - name: Remove one-time files
+        run: rm -f tools/apply_batch6.py tools/fix_batch6.py .github/workflows/apply-batch6.yml .github/workflows/apply-batch6-fix.yml
+      - name: Commit changes
+        run: |
+          git config user.name "cjswoa-star"
+          git config user.email "cjswoa@goedu.kr"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Refine questionable series tags and copy"
+          git push
