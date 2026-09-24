@@ -918,9 +918,9 @@ function bindStaticControls(){
   const moods=['TOO_QUIET','LOW','TENSE','BALANCED','SLIGHTLY_EXCITED','VERY_DISTRACTED'];
   $$('#step2 .mood').forEach((b,i)=>b.onclick=()=>selectOne($$('#step2 .mood'),i,'mood',moods[i]));
   const energies=['LOW','MEDIUM','HIGH'];
-  $$('#step2 .field:last-of-type .choice').forEach((b,i)=>b.onclick=()=>selectOne($$('#step2 .field:last-of-type .choice'),i,'energy',energies[i]));
+  $$('#step2 .field .choice').forEach((b,i)=>b.onclick=()=>selectOne($$('#step2 .field .choice'),i,'energy',energies[i]));
   const contacts=['OK','MINIMIZE','NONE'];
-  $$('#step3 .field:last-of-type .choice').forEach((b,i)=>b.onclick=()=>selectOne($$('#step3 .field:last-of-type .choice'),i,'contact',contacts[i]));
+  $$('#step3 .field .choice').forEach((b,i)=>b.onclick=()=>selectOne($$('#step3 .field .choice'),i,'contact',contacts[i]));
 }
 function togglePurpose(tag){
   let a=state.criteria.purposes;
