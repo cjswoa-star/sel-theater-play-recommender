@@ -36,23 +36,23 @@ jobs:
           assert data_pos < tag_pos < engine_pos, 'curation script load order is wrong'
 
           start = data_pos + len(data_marker)
-          end = html.find(';</script>', start)
-          assert end > start, 'ACTIVITY_MASTER closing marker not found'
-          master = json.loads(html[start:end])
+          master, consumed = json.JSONDecoder().raw_decode(html[start:])
           activity_ids = {a['activity_id'] for a in master['activities']}
 
           override_ids = set(re.findall(r"^\s*'(\d{3})':\s*\{", js, re.M))
           missing = sorted(override_ids - activity_ids)
           assert not missing, f'unknown override ids: {missing}'
 
-          print(f'PASS: activities={len(activity_ids)} override/source-edit ids={len(override_ids)}')
-          print('PASS: JS syntax')
-          print('PASS: script load order')
+          print(f'PASS: activities={len(activity_ids)} curated/source-edit ids={len(override_ids)}')
+          print('PASS: JavaScript syntax')
+          print('PASS: curation script load order')
           print('PASS: all curated ids exist')
           PY
       - name: Remove verification workflow
-        run: rm .github/workflows/verify-curation.yml
+        if: always()
+        run: rm -f .github/workflows/verify-curation.yml
       - name: Commit cleanup
+        if: always()
         run: |
           git config user.name "cjswoa-star"
           git config user.email "cjswoa@goedu.kr"
