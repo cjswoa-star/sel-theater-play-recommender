@@ -508,3 +508,56 @@
     }
   });
 })();
+
+
+// FINAL_FREEZE_CLEANUP_V1
+(function () {
+  'use strict';
+  const master = window.ACTIVITY_MASTER;
+  if (!master || !Array.isArray(master.activities)) return;
+
+  const recEdits = {
+    "150": {"purposes": ["집중하기", "신체 인식", "문제 해결"]}
+  };
+  const sourceEdits = {
+    "150": {
+      "activity_purpose_raw": "집중하기, 신체 인식, 문제 해결",
+      "teacher_prompt_raw": "정한 조건을 억지로 버티기보다, 그 조건 때문에 몸이 어떤 다른 움직임을 찾아내는지 살펴봅시다."
+    },
+    "157": {
+      "reflection_question_raw": "손이 계속 바닥에 닿는 낮은 자세로 이동할 때 평소 걷기와 가장 달랐던 점은 무엇이었나요?"
+    },
+    "159": {
+      "reflection_question_raw": "같은 쪽 손과 발을 함께 움직였을 때 평소 걷기와 가장 다르게 느껴진 점은 무엇이었나요?"
+    },
+    "160": {
+      "reflection_question_raw": "반대쪽 손과 발을 함께 움직였을 때 몸의 무게중심은 어떻게 달라졌나요?"
+    }
+  };
+
+  master.activities.forEach((activity) => {
+    const rec = recEdits[activity.activity_id];
+    const p = activity.recommendation_normalized;
+    if (rec && p) {
+      if (!p.curation_original) {
+        p.curation_original = {
+          purpose_tags: Array.isArray(p.purpose_tags) ? [...p.purpose_tags] : [],
+          sel_tags: Array.isArray(p.sel_tags) ? [...p.sel_tags] : []
+        };
+      }
+      if (Array.isArray(rec.purposes)) p.purpose_tags = [...rec.purposes];
+      p.curation_status = 'CURATED_V1';
+    }
+
+    const edit = sourceEdits[activity.activity_id];
+    if (edit && activity.source_preserved) {
+      const s = activity.source_preserved;
+      if (!s.curation_original) s.curation_original = {};
+      Object.entries(edit).forEach(([key, value]) => {
+        if (!(key in s.curation_original)) s.curation_original[key] = s[key];
+        s[key] = value;
+      });
+      s.curation_status = 'PDF_SYNC_PENDING';
+    }
+  });
+})();
