@@ -1,0 +1,26 @@
+name: Run recommendation scenario tests
+
+on:
+  push:
+    paths:
+      - 'tools/run_scenario_tests.js'
+      - '.github/workflows/run-scenario-tests.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run scenarios
+        run: node tools/run_scenario_tests.js
+      - name: Commit report and remove one-time runner
+        run: |
+          git config user.name "cjswoa-star"
+          git config user.email "cjswoa@goedu.kr"
+          rm -f tools/run_scenario_tests.js .github/workflows/run-scenario-tests.yml
+          git add -A
+          git commit -m "Add recommendation scenario test report" || exit 0
+          git push
