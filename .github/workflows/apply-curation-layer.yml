@@ -1,0 +1,44 @@
+name: Apply curation layer
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-curation-layer.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Insert curation layer after activity data
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('index.html')
+          text = path.read_text(encoding='utf-8')
+          script_tag = '<script src="curation-overrides.js"></script>'
+          if script_tag in text:
+              print('curation layer already installed')
+          else:
+              needle = '</script><script>(function(){\n"use strict";\nconst MASTER=window.ACTIVITY_MASTER;'
+              replacement = '</script>' + script_tag + '<script>(function(){\n"use strict";\nconst MASTER=window.ACTIVITY_MASTER;'
+              count = text.count(needle)
+              if count != 1:
+                  raise SystemExit(f'Expected exactly one engine marker, found {count}')
+              text = text.replace(needle, replacement, 1)
+              path.write_text(text, encoding='utf-8')
+              print('installed curation layer')
+          PY
+      - name: Remove installer workflow
+        run: rm .github/workflows/apply-curation-layer.yml
+      - name: Commit changes
+        run: |
+          git config user.name "cjswoa-star"
+          git config user.email "cjswoa@goedu.kr"
+          git add index.html .github/workflows/apply-curation-layer.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "Load curated recommendation metadata"
+          git push
