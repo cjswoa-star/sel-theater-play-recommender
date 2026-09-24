@@ -1,0 +1,24 @@
+name: Audit SEL explanations
+
+on:
+  push:
+    paths:
+      - 'tools/audit_sel.py'
+      - '.github/workflows/audit-sel.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python tools/audit_sel.py
+      - run: |
+          git config user.name "cjswoa-star"
+          git config user.email "cjswoa@goedu.kr"
+          git add sel-audit-report.md
+          git diff --cached --quiet && exit 0
+          git commit -m "Generate SEL explanation audit report"
+          git push
