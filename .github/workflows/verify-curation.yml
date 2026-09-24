@@ -1,0 +1,62 @@
+name: Verify curation layer
+
+on:
+  push:
+    paths:
+      - '.github/workflows/verify-curation.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check JavaScript syntax
+        run: node --check curation-overrides.js
+      - name: Validate load order and activity ids
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json, re
+
+          html = Path('index.html').read_text(encoding='utf-8')
+          js = Path('curation-overrides.js').read_text(encoding='utf-8')
+
+          tag = '<script src="curation-overrides.js"></script>'
+          assert html.count(tag) == 1, f'curation script tag count={html.count(tag)}'
+
+          data_marker = 'window.ACTIVITY_MASTER='
+          engine_marker = 'const MASTER=window.ACTIVITY_MASTER;'
+          data_pos = html.find(data_marker)
+          tag_pos = html.find(tag)
+          engine_pos = html.find(engine_marker)
+          assert -1 not in (data_pos, tag_pos, engine_pos), 'required marker missing'
+          assert data_pos < tag_pos < engine_pos, 'curation script load order is wrong'
+
+          start = data_pos + len(data_marker)
+          end = html.find(';</script>', start)
+          assert end > start, 'ACTIVITY_MASTER closing marker not found'
+          master = json.loads(html[start:end])
+          activity_ids = {a['activity_id'] for a in master['activities']}
+
+          override_ids = set(re.findall(r"^\s*'(\d{3})':\s*\{", js, re.M))
+          missing = sorted(override_ids - activity_ids)
+          assert not missing, f'unknown override ids: {missing}'
+
+          print(f'PASS: activities={len(activity_ids)} override/source-edit ids={len(override_ids)}')
+          print('PASS: JS syntax')
+          print('PASS: script load order')
+          print('PASS: all curated ids exist')
+          PY
+      - name: Remove verification workflow
+        run: rm .github/workflows/verify-curation.yml
+      - name: Commit cleanup
+        run: |
+          git config user.name "cjswoa-star"
+          git config user.email "cjswoa@goedu.kr"
+          git add .github/workflows/verify-curation.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "Remove one-time curation verification"
+          git push
