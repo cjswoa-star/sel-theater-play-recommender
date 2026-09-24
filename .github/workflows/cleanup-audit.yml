@@ -1,0 +1,33 @@
+name: Cleanup temporary audit files
+
+on:
+  push:
+    paths:
+      - '.github/workflows/cleanup-audit.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove temporary audit artifacts and workflows
+        shell: bash
+        run: |
+          rm -rf audit
+          rm -f .github/workflows/build-activity-audit.yml
+          rm -f .github/workflows/build-deep-audit.yml
+          rm -f .github/workflows/build-review-queue.yml
+          rm -f .github/workflows/build-tag-review.yml
+          rm -f .github/workflows/build-gap-audit.yml
+          rm -f .github/workflows/cleanup-audit.yml
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Remove temporary audit artifacts'
+          git push
