@@ -1,0 +1,43 @@
+name: Build purpose tag review queue
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build-tag-review.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build compact tag queue
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          cat=json.loads(Path('audit/activity_catalog.json').read_text(encoding='utf-8'))
+          rows=[]
+          for x in cat:
+              if len(x.get('purpose_tags',[]))<5: continue
+              rows.append({
+                'id':x['id'],'title':x['title'],'purpose_tags':x['purpose_tags'],
+                'summary':(x['summary'] or '').replace('\n',' '),
+                'procedure':' / '.join(p.get('text','').replace('\n',' ') for p in x['procedure']),
+                'prompt':(x['teacher_prompt'] or '').replace('\n',' '),
+                'reflection':(x['reflection'] or '').replace('\n',' ')
+              })
+          Path('audit/tag_review.jsonl').write_text('\n'.join(json.dumps(r,ensure_ascii=False,separators=(',',':')) for r in rows)+'\n',encoding='utf-8')
+          print('rows',len(rows))
+          PY
+      - name: Commit queue
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add audit/tag_review.jsonl
+          git commit -m 'Generate temporary purpose tag review queue'
+          git push
