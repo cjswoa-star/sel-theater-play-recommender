@@ -1,0 +1,26 @@
+name: Run recommendation engine V2 simulation
+
+on:
+  push:
+    paths:
+      - 'tools/run_scenario_tests_v2.js'
+      - '.github/workflows/run-scenario-tests-v2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run V2 simulation
+        run: node tools/run_scenario_tests_v2.js
+      - name: Commit V2 report and remove one-time runner
+        run: |
+          git config user.name "cjswoa-star"
+          git config user.email "cjswoa@goedu.kr"
+          rm -f tools/run_scenario_tests_v2.js .github/workflows/run-scenario-tests-v2.yml
+          git add -A
+          git commit -m "Add recommendation engine V2 scenario report" || exit 0
+          git push
